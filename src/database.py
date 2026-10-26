@@ -2,20 +2,22 @@ import sqlite3
 import os
 from datetime import datetime
 
-# Path to local attendance.db file
+# Define database and dataset folder paths relative to this script
 DB_PATH = os.path.join(os.path.dirname(__file__), '../data/attendance.db')
+DATASET_DIR = os.path.join(os.path.dirname(__file__), '../dataset')
 
 def init_db():
-    """Initialize SQLite database tables for student profiles and attendance logs."""
+    """Initialize database tables if they do not exist."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    os.makedirs(DATASET_DIR, exist_ok=True)
+    
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Table 1: Registered student profiles
+    # Create users table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            enroll_no TEXT UNIQUE NOT NULL,
+            enroll_no TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             course TEXT NOT NULL,
             year TEXT NOT NULL,
@@ -23,7 +25,7 @@ def init_db():
         )
     ''')
 
-    # Table 2: Daily attendance scans
+    # Create attendance logs table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS attendance (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,8 +33,8 @@ def init_db():
             name TEXT NOT NULL,
             course TEXT NOT NULL,
             year TEXT NOT NULL,
-            scan_date DATE DEFAULT (DATE('now', 'localtime')),
-            scan_time TIME DEFAULT (TIME('now', 'localtime')),
+            scan_date DATE NOT NULL,
+            scan_time TIME NOT NULL,
             status TEXT DEFAULT 'Present',
             FOREIGN KEY (enroll_no) REFERENCES users (enroll_no)
         )
@@ -40,11 +42,10 @@ def init_db():
 
     conn.commit()
     conn.close()
-    print("Database schema initialized successfully at data/attendance.db")
-
+    print("Database schema initialized successfully.")
 
 def add_student(enroll_no, name, course, year):
-    """Register a new student profile in the database."""
+    """Register student details in SQLite and prepare dataset directory."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
@@ -53,62 +54,56 @@ def add_student(enroll_no, name, course, year):
             VALUES (?, ?, ?, ?)
         ''', (enroll_no, name, course, year))
         conn.commit()
-        print(f"Student {name} ({enroll_no}) registered successfully.")
+
+        # Create student folder to save dataset photos
+        student_folder = os.path.join(DATASET_DIR, enroll_no)
+        os.makedirs(student_folder, exist_ok=True)
+        print(f"Student {name} registered and folder created at {student_folder}")
+        return True
     except sqlite3.IntegrityError:
-        print(f"Student with Enrollment No {enroll_no} already exists.")
+        print(f"Student {enroll_no} already exists.")
+        return False
     finally:
         conn.close()
 
-
 def mark_attendance(enroll_no):
-    """Mark attendance for a student using their Enrollment No.
-    Prevents duplicate entries on the same day.
-    """
+    """Log daily attendance once per student per date."""
+    today_date = datetime.now().strftime('%Y-%m-%d')
+    now_time = datetime.now().strftime('%H:%M:%S')
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Check if student exists in the system
-    cursor.execute('SELECT name, course, year FROM users WHERE enroll_no = ?', (enroll_no,))
+    # Fetch student details
+    cursor.execute("SELECT name, course, year FROM users WHERE enroll_no = ?", (enroll_no,))
     student = cursor.fetchone()
 
     if not student:
-        print(f"No student found with Enrollment No: {enroll_no}")
         conn.close()
         return False
 
     name, course, year = student
-    today_date = datetime.now().strftime('%Y-%m-%d')
 
-    # Check if student has already been marked present today
+    # Check if attendance is already marked today
     cursor.execute('''
-        SELECT id FROM attendance 
-        WHERE enroll_no = ? AND scan_date = ?
+        SELECT id FROM attendance WHERE enroll_no = ? AND scan_date = ?
     ''', (enroll_no, today_date))
-    already_marked = cursor.fetchone()
+    record = cursor.fetchone()
 
-    if already_marked:
-        print(f"Attendance already recorded today for {name} ({enroll_no}).")
-        conn.close()
-        return False
+    if not record:
+        cursor.execute('''
+            INSERT INTO attendance (enroll_no, name, course, year, scan_date, scan_time, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'Present')
+        ''', (enroll_no, name, course, year, today_date, now_time))
+        conn.commit()
+        print(f"Attendance marked for {name} ({enroll_no}) at {now_time}")
 
-    # Insert attendance entry with current date and time
-    current_time = datetime.now().strftime('%H:%M:%S')
-    cursor.execute('''
-        INSERT INTO attendance (enroll_no, name, course, year, scan_date, scan_time, status)
-        VALUES (?, ?, ?, ?, ?, ?, 'Present')
-    ''', (enroll_no, name, course, year, today_date, current_time))
-
-    conn.commit()
     conn.close()
-    print(f"Attendance marked for {name} at {current_time} on {today_date}")
     return True
 
-
-def get_daily_attendance(date_str=None):
-    """Fetch attendance records for a specific date (defaults to today)."""
-    if date_str is None:
-        date_str = datetime.now().strftime('%Y-%m-%d')
-
+def get_daily_attendance():
+    """Retrieve today's attendance logs for dashboard table."""
+    today_date = datetime.now().strftime('%Y-%m-%d')
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -116,27 +111,22 @@ def get_daily_attendance(date_str=None):
         SELECT enroll_no, name, course, year, scan_date, scan_time, status
         FROM attendance
         WHERE scan_date = ?
-        ORDER BY scan_time DESC
-    ''', (date_str,))
+        ORDER BY id DESC
+    ''', (today_date,))
+    logs = cursor.fetchall()
 
-    records = cursor.fetchall()
     conn.close()
-    return records
+    return logs
 
-
-if __name__ == '__main__':
-    # Initialize DB and test with sample data
-    init_db()
-
-    # Add sample students
-    add_student('EN202601', 'Rahul Sharma', 'Computer Science', '3rd Year')
-    add_student('EN202602', 'Ananya Patel', 'Information Technology', '3rd Year')
-
-    # Test marking attendance
-    mark_attendance('EN202601')
-
-    # Print logs
-    logs = get_daily_attendance()
-    print("\nToday's Attendance Logs:")
-    for log in logs:
-        print(log)
+def get_registered_students():
+    """Fetch all registered students from SQLite for Roster Dashboard."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT enroll_no, name, course, year, created_at 
+        FROM users 
+        ORDER BY created_at DESC
+    ''')
+    students = cursor.fetchall()
+    conn.close()
+    return students

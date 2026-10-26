@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Registered Students Directory</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; }
+        .nav { max-width: 1400px; margin: 0 auto 20px auto; display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 16px 24px; border-radius: 12px; border: 1px solid #334155; }
+        .nav-links a { color: #94a3b8; text-decoration: none; margin-left: 20px; font-weight: 600; padding: 8px 16px; border-radius: 8px; }
+        .nav-links a.active, .nav-links a:hover { background: #2563eb; color: #fff; }
+        .card { max-width: 1400px; margin: 0 auto; background: #1e293b; border-radius: 12px; border: 1px solid #334155; padding: 24px; }
+        table { width: 100%; border-collapse: collapse; text-align: left; margin-top: 16px; }
+        th { background: #0f172a; padding: 14px; color: #94a3b8; font-size: 13px; text-transform: uppercase; }
+        td { padding: 14px; border-bottom: 1px solid #334155; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <h2>Registered Students Directory</h2>
+        <div class="nav-links">
+            <a href="/">Live Scanner</a>
+            <a href="/students" class="active">Student Roster</a>
+            <a href="/enroll">+ Register Student</a>
+        </div>
+    </div>
+    <div class="card">
+        <h3>Enrolled Profiles Database</h3>
+        <table>
+            <thead>
+                <tr><th>Enrollment No</th><th>Full Name</th><th>Course</th><th>Year</th><th>Registered On</th></tr>
+            </thead>
+            <tbody>
+                {% for s in students %}
+                <tr><td><strong>{{ s[0] }}</strong></td><td>{{ s[1] }}</td><td>{{ s[2] }}</td><td>{{ s[3] }}</td><td>{{ s[4] }}</td></tr>
+                {% else %}
+                <tr><td colspan="5" style="text-align: center; color: #64748b; padding: 40px;">No students registered yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
